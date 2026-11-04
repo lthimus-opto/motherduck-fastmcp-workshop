@@ -3,6 +3,8 @@
 FastMCP Gateway runs this file. Its entrypoint setting is `server.py:mcp`.
 """
 
+import logging
+import re
 from collections import Counter, defaultdict
 from statistics import median
 
@@ -10,8 +12,12 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 
 from sf311.data import BY_ID, LOCAL_NAMES, NEIGHBORHOODS, REQUESTS, SERVICES, closest
+from sf311.kit import caller_email
 
 mcp = FastMCP("sf-311")
+logger = logging.getLogger(__name__)
+
+HOUSE_NUMBER = re.compile(r"^(\d+)\s+([^,]+)")
 
 GROUP_BY_FIELDS = {
     "neighborhood": lambda r: r.neighborhood,
@@ -38,6 +44,21 @@ def _check_neighborhood(neighborhood: str | None) -> None:
         suggestions = closest(neighborhood, NEIGHBORHOODS)
         hint = f" Did you mean: {', '.join(suggestions)}?" if suggestions else ""
         raise ToolError(f"Unknown neighborhood {neighborhood!r}.{hint}")
+
+
+def _mask_address(address: str) -> str:
+    """Turn "994 HARRISON ST, SAN FRANCISCO, ..." into "900 block of HARRISON ST"."""
+    match = HOUSE_NUMBER.match(address)
+    if not match:
+        return address
+    block = int(match.group(1)) // 100 * 100
+    return f"{block} block of {match.group(2).strip()}"
+
+
+def _masked_dict(request) -> dict:
+    row = request.as_dict()
+    row["address"] = _mask_address(row["address"])
+    return row
 
 
 def _matching(service: str | None = None, neighborhood: str | None = None, status: str | None = None) -> list:
@@ -86,7 +107,8 @@ def search_requests(
     `status` is "Open" or "Closed". `limit` is 1 to 50 (default 20).
     Returns at most `limit` requests, each with the fields of a 311 request
     (request_id, opened, closed, status, service, subtype, agency,
-    neighborhood, local_name, address, source).
+    neighborhood, local_name, address, source). `address` is masked to the
+    block, such as "900 block of HARRISON ST".
     """
     if not 1 <= limit <= MAX_ROWS:
         raise ToolError(f"limit must be between 1 and {MAX_ROWS}, not {limit}.")
@@ -94,7 +116,7 @@ def search_requests(
         raise ToolError(f"status must be 'Open' or 'Closed', not {status!r}.")
     rows = _matching(service, neighborhood, status)
     rows.sort(key=lambda r: r.opened, reverse=True)
-    return [r.as_dict() for r in rows[:limit]]
+    return [_masked_dict(r) for r in rows[:limit]]
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -163,12 +185,14 @@ def get_request(request_id: str) -> dict:
 
     Use this when you already have a request_id, for example from
     `search_requests`. Use `search_requests` instead to find requests by
-    service, neighborhood, or status.
+    service, neighborhood, or status. `address` is masked to the block,
+    such as "900 block of HARRISON ST".
     """
     request = BY_ID.get(request_id)
     if request is None:
         raise ToolError(f"No request with id {request_id!r}. Use search_requests to find a valid request_id.")
-    return request.as_dict()
+    logger.info("get_request %s caller=%s", request_id, caller_email() or "local")
+    return _masked_dict(request)
 
 
 if __name__ == "__main__":
