@@ -221,7 +221,7 @@ def count_in_neighborhood(name: str, boundary: str | None = None, ctx: Context =
         raise ToolError(f"Unknown neighborhood {name!r}.{hint}")
 
     if len(overlaps) == 1:
-        return sum(1 for r in REQUESTS if r.local_name == name)
+        return sum(1 for r in REQUESTS if r.local_name == name and r.neighborhood)
 
     all_option = f"All of {name}"
     chosen = boundary
@@ -234,7 +234,7 @@ def count_in_neighborhood(name: str, boundary: str | None = None, ctx: Context =
         chosen = answer.value
 
     if chosen.lower() == "all" or chosen == all_option:
-        return sum(1 for r in REQUESTS if r.local_name == name)
+        return sum(1 for r in REQUESTS if r.local_name == name and r.neighborhood)
     if chosen not in overlaps:
         raise ToolError(f"boundary must be one of {overlaps} or 'all', not {chosen!r}.")
     return sum(1 for r in REQUESTS if r.local_name == name and r.neighborhood == chosen)
