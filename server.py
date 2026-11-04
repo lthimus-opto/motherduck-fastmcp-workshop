@@ -180,6 +180,17 @@ def median_close_hours(
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
+def count_open_requests(service: str | None = None, neighborhood: str | None = None) -> int:
+    """Count 311 requests that are still open (not yet closed).
+
+    Use this for "how many are open" questions. Use `count_requests`
+    instead for a total regardless of status, or its `group_by="status"`
+    for a full open/closed breakdown.
+    """
+    return len(_matching(service, neighborhood, status="Open"))
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
 def get_request(request_id: str) -> dict:
     """Return one 311 request by its request_id.
 
